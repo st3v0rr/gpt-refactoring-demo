@@ -1,0 +1,164 @@
+version: 1.0.5
+cache: true
+
+endpoints:
+  agents:
+    recursionLimit: 50
+    maxRecursionLimit: 100
+    disableBuilder: false
+  # Anthropic Claude
+  anthropic:
+    apiKey: "${ANTHROPIC_API_KEY}"
+    titleConvo: true
+    summarize: false
+    forcePrompt: false
+    recursionLimit: 50
+
+mcpServers:
+  code-analysis:
+    type: streamable-http
+    url: http://neo4j-mcp:8002/mcp
+    timeout: 30000
+    initTimeout: 15000
+    serverInstructions: |
+      You have access to a Neo4j graph database with these powerful tools:
+      
+      🔍 **Schema & Info Tools:**
+      - get_neo4j_schema: Get all node labels, relationships, and properties
+      - get_database_info: Get database statistics (node/relationship counts)
+      - list_indexes: Show all database indexes
+      
+      📖 **Query Tools:**
+      - read_neo4j_cypher: Execute read-only queries (MATCH, RETURN, WHERE, etc.)
+      - write_neo4j_cypher: Execute write queries (CREATE, UPDATE, DELETE, MERGE)
+      
+      **Best Practices:**
+      - Always start with get_neo4j_schema to understand the data structure
+      - Use LIMIT clause for large datasets
+      - Use parameters for dynamic queries
+      - For complex queries, break them into smaller steps
+      
+      **Example Queries:**
+      - `MATCH (n) RETURN labels(n), count(n)` - Get node type counts
+      - `MATCH (n)-[r]->(m) RETURN type(r), count(r)` - Get relationship counts
+      - `MATCH (n:Person) RETURN n.name LIMIT 10` - Get person names
+    chatMenu: true
+
+  # Kanboard MCP Server
+  kanboard:
+    type: streamable-http
+    url: http://kanboard-mcp:8003/mcp
+    timeout: 30000
+    initTimeout: 15000
+    serverInstructions: |
+      📊 **Kanboard Project Management Tools:**
+
+      **📂 Project Management:**
+      - get_all_projects: List all projects
+      - get_project: Get detailed project information
+      - create_project: Create new projects
+      - get_board: Get complete board view with columns and tasks
+
+      **✅ Task Management:**
+      - get_all_tasks: List tasks for a project (open/closed)
+      - get_task: Get detailed task information
+      - create_task: Create new tasks with title, description, priority
+      - update_task: Update existing tasks
+      - move_task: Move tasks between columns
+      - close_task: Mark tasks as completed
+
+      **👥 Collaboration:**
+      - get_users: List all system users
+      - add_comment: Add comments to tasks
+      - get_task_comments: Get all comments for a task
+
+      **🔍 Search & Overview:**
+      - search_tasks: Search tasks by query across projects
+      - get_my_dashboard: Get personal dashboard with assigned tasks
+      - get_overdue_tasks: Find all overdue tasks
+      - get_columns: List project columns/stages
+
+      **Usage Examples:**
+      - "Show me all my projects"
+      - "Get the board view for project 1"
+      - "Create a task called 'Fix bug' in project 2"
+      - "Move task 123 to column 4 (Done)"
+      - "Search for tasks containing 'urgent'"
+      - "Show my dashboard with assigned tasks"
+      - "List all overdue tasks"
+      - "Add comment 'Working on this' to task 456"
+
+      **Priority Levels:** 0=None, 1=Low, 2=Medium, 3=High, 4=Urgent
+      **Task States:** 1=Open, 0=Closed
+
+      **Best Practices:**
+      - Always get project ID first before creating tasks
+      - Use get_board to see the complete project structure
+      - Check get_columns to see available task stages
+      - Use search_tasks to find specific tasks quickly
+    chatMenu: true
+
+  wikijs:
+    type: streamable-http
+    url: http://wikijs-mcp:8001/mcp
+    timeout: 30000
+    initTimeout: 15000
+    serverInstructions: |
+      📚 **Wiki.js Tools:**
+      
+      **🔍 Seiten anzeigen & durchsuchen:**
+      - get_pages: Liste alle Seiten mit optionalem Filter (Tags, Sprache, Limit)
+      - get_page: Zeige eine bestimmte Seite via ID oder Pfad
+      - search_pages: Durchsuche Seiten mit Suchbegriff
+      
+      **🆕 Seiten erstellen:**
+      - create_page: Neue Wiki-Seite erstellen mit Titel, Inhalt, Tags etc.
+      
+      **✏️ Seiten bearbeiten:**
+      - update_page: Aktualisiere bestehende Seiten anhand ihrer ID
+      
+      **🗑️ Seiten löschen:**
+      - delete_page: Entferne eine Seite anhand ihrer ID
+      
+      **🌲 Struktur & Navigation:**
+      - get_tree: Abrufe der Seitenbaum-Struktur (Navigation) nach Sprache oder Parent-Seite
+      
+      **Beispiel-Anfragen:**
+      - "Erstelle eine neue Seite namens 'Projekt X' mit Inhalt '...' im Pfad 'docs/projekt-x'"
+      - "Suche alle Seiten mit dem Tag 'onboarding'"
+      - "Hole die Seite mit dem Pfad 'home'"
+      - "Gib mir den Wiki-Baum für deutsche Seiten"
+
+  octo-flow:
+    type: streamable-http
+    url: http://octo-flow-mcp:8000/mcp/tools
+    timeout: 30000
+    initTimeout: 15000
+    serverInstructions: |
+      🏗️ **Octo-Flow Tools:**
+      
+      **🔧 Services erstellen:**
+      - create_service_mcp_octo-flow: Erstelle einen neuen Service mit Name und optionaler Beschreibung
+      
+      **📦 Entities modellieren:**
+      - create_entity_mcp_octo-flow: Erstelle eine Entity (Datenmodell) innerhalb eines Services mit Feldern
+      
+      **🔌 API Endpoints definieren:**
+      - create_api_endpoint_mcp_octo-flow: Erstelle einen API-Endpoint mit HTTP-Methode, Pfad und optionaler Zusammenfassung
+      
+      **🔗 Service-Verbindungen herstellen:**
+      - create_service_connection_mcp_octo-flow: Verbinde zwei Services mit Kommunikationstyp (http, grpc, message-queue, database, event, sync, async)
+      
+      **Beispiel-Anfragen:**
+      - "Erstelle einen UserService zur Benutzerverwaltung"
+      - "Füge eine User-Entity mit Feldern email, name, password zum UserService hinzu"
+      - "Erstelle einen GET /users/{id} Endpoint im UserService"
+      - "Verbinde OrderService mit PaymentService über HTTP"
+      - "Erstelle eine Microservice-Architektur mit Auth, User und Order Service"
+      
+      **💡 Tipps:**
+      - Services sind die Hauptkomponenten der Architektur
+      - Entities definieren die Datenmodelle innerhalb eines Services
+      - API Endpoints dokumentieren die Schnittstellen
+      - Verbindungen zeigen die Kommunikation zwischen Services im Landscape View
+

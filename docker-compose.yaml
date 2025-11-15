@@ -1,0 +1,274 @@
+services:
+  octo-flow-frontend:
+    build:
+      context: ./octo-flow-frontend
+      dockerfile: Dockerfile
+    container_name: octo-flow-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - VITE_API_URL=http://${PUBLIC_IP}:3001
+    volumes:
+      - /app/node_modules
+    depends_on:
+      - octo-flow-backend
+
+  octo-flow-backend:
+    build:
+      context: ./octo-flow-server
+      dockerfile: Dockerfile
+    container_name: octo-flow-backend
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=development
+      - PORT=3001
+    volumes:
+      - ./data/octo-flow-backend/data:/app/data
+      - /app/node_modules
+    healthcheck:
+      test: [ "CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3001/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  neo4j:
+    image: neo4j:5.20
+    container_name: neo4j
+    restart: unless-stopped
+    ports:
+      - "7474:7474"  # HTTP Web Interface
+      - "7687:7687"  # Bolt Protocol
+    environment:
+      - LANG=C.UTF-8
+      - LC_ALL=C.UTF-8
+      - NEO4J_server_jvm_additional="-Dfile.encoding=UTF-8 -Dsun.jnu.encoding=UTF-8"
+      - NEO4J_AUTH=${NEO4J_USERNAME}/${NEO4J_PASSWORD}
+      - NEO4J_dbms_memory_heap_initial__size=512m
+      - NEO4J_dbms_memory_heap_max__size=1G
+      - NEO4J_dbms_memory_pagecache_size=512m
+      - NEO4J_PLUGINS=["apoc"]
+      - NEO4J_apoc_export_file_enabled=true
+    volumes:
+      - ./data/neo4j_data:/data
+      - ./data/neo4j_logs:/logs
+      - ./data/neo4j_plugins:/plugins
+    healthcheck:
+      test: [ "CMD-SHELL", "cypher-shell -u ${NEO4J_USERNAME} -p ${NEO4J_PASSWORD} 'RETURN 1 as health' || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  kanboard:
+    image: ${KANBOARD_IMAGE:-kanboard/kanboard:latest}
+    container_name: kanboard
+    restart: unless-stopped
+    ports:
+      - "3010:80"
+    volumes:
+      - ./data/kanboard_data:/var/www/app/data
+      - ./data/plugins:/var/www/app/plugins
+      - ./data/certs:/etc/nginx/ssl
+
+  wikijs-db:
+    image: postgres:15-alpine
+    container_name: wikijs-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: wiki
+      POSTGRES_USER: ${WIKIJS_DB_USERNAME}
+      POSTGRES_PASSWORD: ${WIKIJS_DB_PASSWORD}
+    volumes:
+      - wikijs_db:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${WIKIJS_DB_USERNAME} -d wiki" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  wikijs:
+    image: ghcr.io/requarks/wiki:2
+    container_name: wikijs
+    restart: unless-stopped
+    ports:
+      - "3020:3000"
+    environment:
+      DB_TYPE: postgres
+      DB_HOST: wikijs-db
+      DB_PORT: 5432
+      DB_USER: ${WIKIJS_DB_USERNAME}
+      DB_PASS: ${WIKIJS_DB_PASSWORD}
+      DB_NAME: wiki
+      # Admin Setup (nur beim ersten Start)
+      WIKI_ADMIN_EMAIL: ${WIKIJS_ADMIN_EMAIL}
+    depends_on:
+      - wikijs-db
+    volumes:
+      - ./data/wikijs_data:/wiki/data/content
+
+  mongodb:
+    image: mongo:8.2.1
+    container_name: mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=${MONGODB_USERNAME}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGODB_PASSWORD}
+    volumes:
+      - ./data/mongodb_data:/data/db
+    healthcheck:
+      test: [ "CMD", "mongosh", "--eval", "db.adminCommand('ping')" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  librechat:
+    image: librechat/librechat:latest
+    container_name: librechat
+    restart: unless-stopped
+    ports:
+      - "3030:3080"
+    environment:
+      - MONGO_URI=mongodb://${MONGODB_USERNAME}:${MONGODB_PASSWORD}@mongodb:27017/LibreChat?authSource=admin
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - ALLOW_EMAIL_LOGIN=true
+      - ALLOW_REGISTRATION=true
+      - ALLOW_SOCIAL_LOGIN=false
+      - ALLOW_SOCIAL_REGISTRATION=false
+      - JWT_SECRET=${JWT_SECRET:-librechat-secret-key-change-me-secure-value}
+      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:-librechat-refresh-secret-key-change-me}
+      - CREDS_KEY=${CREDS_KEY:-librechat-creds-key-32-chars-min}
+      - CREDS_IV=${CREDS_IV:-librechat-creds-iv-16-chars}
+    depends_on:
+      - mongodb
+      - neo4j-mcp
+      - kanboard-mcp
+      - octo-flow-mcp
+      - wikijs-mcp
+    volumes:
+      - ./data/librechat_data:/app/client/public/images
+      - ./data/librechat_data/auth.json:/app/api/data/auth.json
+      - ./librechat.yaml:/app/librechat.yaml
+
+  #MCP Server
+  octo-flow-mcp:
+    build:
+      context: ./octo-flow-mcp-server
+      dockerfile: Dockerfile
+    container_name: octo-flow-mcp
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - NODE_ENV=development
+      - MCP_EXPRESS_PORT=8000
+      - EA_BACKEND_URL=http://octo-flow-backend:3001/api
+    volumes:
+      - /app/node_modules
+    depends_on:
+      - octo-flow-backend
+
+  wikijs-mcp:
+    image: node:18-alpine
+    container_name: wikijs-mcp
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    environment:
+      - PORT=8001
+      - WIKIJS_URL=http://wikijs:3000
+      - WIKIJS_API_KEY=${WIKIJS_API_KEY}  # Muss in Wiki.js erstellt werden
+    volumes:
+      - ./mcp/wikijs-mcp-server.js:/app/server.js
+    working_dir: /app
+    depends_on:
+      - wikijs
+    command: >
+      sh -c "
+        npm install express cors axios &&
+        node server.js
+      "
+    healthcheck:
+      test: [ "CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8001/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  neo4j-mcp:
+    image: node:18-alpine
+    container_name: neo4j-mcp
+    restart: unless-stopped
+    ports:
+      - "8002:8002"
+    environment:
+      - PORT=8002
+      - NEO4J_URL=http://neo4j:7474
+      - NEO4J_USERNAME=${NEO4J_USERNAME}
+      - NEO4J_PASSWORD=${NEO4J_PASSWORD}
+    volumes:
+      - ./mcp/neo4j-mcp-server.js:/app/server.js
+    working_dir: /app
+    command: >
+      sh -c "
+        npm install express cors axios &&
+        node server.js
+      "
+    depends_on:
+      - neo4j
+    healthcheck:
+      test: [ "CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8002/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  kanboard-mcp:
+    image: node:18-alpine
+    container_name: kanboard-mcp
+    restart: unless-stopped
+    ports:
+      - "8003:8003"
+    environment:
+      - PORT=8003
+      - KANBOARD_URL=http://kanboard
+      - KANBOARD_USERNAME=${KANBOARD_USERNAME}
+      - KANBOARD_PASSWORD=${KANBOARD_PASSWORD}
+    volumes:
+      - ./mcp/kanboard-mcp-server.js:/app/server.js
+    working_dir: /app
+    command: >
+      sh -c "
+        npm install express cors axios &&
+        node server.js
+      "
+    depends_on:
+      - kanboard
+    healthcheck:
+      test: [ "CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8003/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  neo4j_data:
+  neo4j_logs:
+  neo4j_plugins:
+  data:
+    driver: local
+  plugins:
+    driver: local
+  certs:
+    driver: local
+  librechat_data:
+  mongodb_data:
+  wikijs_db:
+    driver: local
+  wikijs_data:
+    driver: local
+
+networks:
+  default:
+    driver: bridge
